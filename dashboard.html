@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Adaptive Keep-Alive Simulator</title>
+<style>
+  :root {
+    --bg:#f6f6f3; --surface:#ffffff; --ink:#0b0b0b; --ink2:#52514e; --muted:#85837d; --line:#e4e3df;
+    --good:#0a7a3d; --warn:#9a5b00; --bad:#c62828; --goodbg:#e6f4ec; --warnbg:#fdf1de; --badbg:#fbe9e9;
+    --accent:#2a78d6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:#121211; --surface:#1b1b1a; --ink:#f0efec; --ink2:#c3c2b7; --muted:#8f8d86; --line:#2e2d2a;
+      --good:#4cc38a; --warn:#e0a030; --bad:#ef6b6b; --goodbg:#16291f; --warnbg:#2e2412; --badbg:#2f1717;
+      --accent:#3987e5;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  .wrap { max-width:1280px; margin:0 auto; padding:20px 16px 48px; }
+  h1 { font-size:22px; margin:0 0 2px; }
+  .sub { color:var(--ink2); margin:0 0 16px; }
+  .panel { background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin-bottom:14px; }
+  .controls { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; align-items:end; }
+  label.f { display:flex; flex-direction:column; font-size:12px; color:var(--ink2); gap:4px; }
+  select,input[type=number] { font:inherit; padding:7px 8px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--ink); }
+  .pols { display:flex; flex-wrap:wrap; gap:8px 16px; margin-top:12px; }
+  .pols label { display:flex; align-items:center; gap:6px; cursor:pointer; }
+  .sw { width:12px; height:12px; border-radius:3px; background:var(--c); display:inline-block; }
+  .btns { display:flex; gap:8px; }
+  button.b { font:inherit; font-weight:600; padding:9px 18px; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--ink); cursor:pointer; }
+  button.b.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  button.b:disabled { opacity:.45; cursor:default; }
+  .status { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:12px; }
+  .prog { flex:1; min-width:180px; height:8px; background:var(--line); border-radius:4px; overflow:hidden; }
+  .prog i { display:block; height:100%; background:var(--accent); width:0; transition:width .25s linear; }
+  .pill { font-size:12px; font-weight:700; padding:3px 10px; border-radius:999px; background:var(--line); color:var(--ink2); }
+  .pill.running { background:var(--goodbg); color:var(--good); }
+  .pill.error { background:var(--badbg); color:var(--bad); }
+  .lanes { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:12px; margin-bottom:14px; }
+  .lane { text-align:left; font:inherit; color:var(--ink); background:var(--surface); border:1px solid var(--line); border-left:6px solid var(--c); border-radius:12px; padding:12px 14px; cursor:pointer; }
+  .lane.focus { outline:2px solid var(--c); outline-offset:1px; }
+  .lname { font-weight:700; display:flex; justify-content:space-between; gap:6px; }
+  .tag { font-size:11px; font-weight:700; color:var(--ink2); border:1px solid var(--line); border-radius:6px; padding:0 6px; }
+  .big { font-size:34px; font-weight:800; line-height:1.1; margin:6px 0 2px; font-variant-numeric:tabular-nums; }
+  .big small { font-size:12px; font-weight:500; color:var(--ink2); margin-left:4px; }
+  .kv { display:flex; justify-content:space-between; color:var(--ink2); font-size:13px; padding:2px 0; border-top:1px solid var(--line); margin-top:3px; }
+  .kv b { color:var(--ink); font-variant-numeric:tabular-nums; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media (max-width:860px) { .grid2 { grid-template-columns:1fr; } }
+  h2 { font-size:15px; margin:0 0 2px; }
+  .cap { color:var(--ink2); font-size:13px; margin:0 0 8px; }
+  canvas { width:100%; height:250px; display:block; }
+  canvas.tall { height:290px; }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:10px; }
+  .tile { border:1px solid var(--line); border-radius:10px; padding:9px 11px; background:var(--bg); }
+  .tile.alive { border-color:var(--good); }
+  .tile.expired { border-color:var(--bad); background:var(--badbg); }
+  .tile.reconnecting { border-color:var(--warn); background:var(--warnbg); }
+  .th { display:flex; justify-content:space-between; font-size:13px; align-items:center; gap:6px; }
+  .badge { font-size:12px; font-weight:700; }
+  .alive .badge { color:var(--good); } .expired .badge { color:var(--bad); } .reconnecting .badge { color:var(--warn); }
+  .bar { position:relative; height:10px; background:var(--line); border-radius:5px; margin:8px 0 6px; overflow:visible; }
+  .bar i { position:absolute; left:0; top:0; bottom:0; border-radius:5px; background:var(--good); }
+  .bar i.w { background:var(--warn); } .bar i.r { background:var(--bad); }
+  .bar u { position:absolute; top:-3px; bottom:-3px; width:2px; background:var(--ink); left:83.33%; text-decoration:none; }
+  .tmeta { font-size:12px; color:var(--ink2); }
+  .events { max-height:210px; overflow:auto; font-size:13px; }
+  .ev { display:flex; gap:8px; align-items:center; padding:3px 0; border-bottom:1px solid var(--line); }
+  .ev time { color:var(--muted); font-variant-numeric:tabular-nums; min-width:54px; }
+  .empty { text-align:center; color:var(--ink2); padding:40px 10px; }
+  details { color:var(--ink2); font-size:13px; }
+  .err { color:var(--bad); font-weight:600; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Adaptive Keep-Alive: live simulator</h1>
+  <p class="sub">Real TCP sockets &middot; clients &rarr; NAT emulator (hidden idle timeout) &rarr; server &middot; time is compressed so hours run in seconds</p>
+
+  <div class="panel">
+    <div class="controls">
+      <label class="f">Network scenario
+        <select id="scenario">
+          <option value="static">Static NAT timeout</option>
+          <option value="dynamic">Changing timeout (300 &rarr; 60 &rarr; 180 s)</option>
+          <option value="lossy">Lossy link (240 s, 10% loss)</option>
+        </select></label>
+      <label class="f static-only">NAT idle timeout (s)
+        <input id="timeout" type="number" min="20" max="1200" value="300"></label>
+      <label class="f static-only">Packet loss (%)
+        <input id="loss" type="number" min="0" max="40" value="0"></label>
+      <label class="f">Simulated length
+        <select id="duration"><option value="3600">1 hour</option><option value="10800" selected>3 hours</option><option value="21600">6 hours</option></select></label>
+      <label class="f">Speed
+        <select id="speed"><option value="250" selected>Fast (250x)</option><option value="100">Medium (100x)</option><option value="40">Slow, narrate (40x)</option></select></label>
+      <label class="f">Clients
+        <input id="n" type="number" min="2" max="20" value="10"></label>
+      <label class="f">Random seed
+        <input id="seed" type="number" value="1"></label>
+      <div class="btns">
+        <button class="b primary" id="startBtn">Start</button>
+        <button class="b" id="stopBtn" disabled>Stop</button>
+      </div>
+    </div>
+    <div class="pols" id="pols"></div>
+    <div class="status">
+      <span class="pill" id="pill">idle</span>
+      <span id="clock" style="font-variant-numeric:tabular-nums">0:00:00 / 0:00:00</span>
+      <div class="prog"><i id="prog"></i></div>
+    </div>
+    <div class="err" id="err"></div>
+  </div>
+
+  <div id="empty" class="panel empty">Pick a scenario and one or more policies, then press <b>Start</b>.<br>Tip: tick Default, Fixed 60 and Adaptive to watch them race.</div>
+
+  <div class="lanes" id="lanes"></div>
+
+  <div class="grid2" id="charts" hidden>
+    <div class="panel"><h2>Heartbeats sent (cumulative)</h2><p class="cap">Lower is better: every heartbeat costs battery and bandwidth.</p><canvas id="c1"></canvas></div>
+    <div class="panel"><h2>Connection drops (cumulative)</h2><p class="cap">Lower is better: a drop means the NAT silently killed the connection and the server had to detect it.</p><canvas id="c2"></canvas></div>
+  </div>
+  <div class="panel" id="adaptPanel" hidden>
+    <h2 id="adaptTitle">Client 0: heartbeat interval vs hidden NAT timeout</h2>
+    <p class="cap">Grey line = the NAT's real (hidden) timeout for this client. Coloured line = how long the server waits before the next heartbeat. Red triangles = drops. The interval should climb toward, but stay under, the grey line. After a drop the NAT swallows the server's close, so the client only notices through its 15-minute silence watchdog and the line stays flat until it reconnects. Click a policy card above to inspect it.</p>
+    <canvas id="c3" class="tall"></canvas>
+  </div>
+  <div class="panel" id="tilePanel" hidden>
+    <h2 id="tileTitle">Clients</h2>
+    <p class="cap">Each bar shows how long the connection has been idle compared with its NAT timeout (black tick). A heartbeat resets the bar. Past the tick, the NAT has already forgotten the connection.</p>
+    <div class="tiles" id="tiles"></div>
+  </div>
+  <div class="panel" id="evPanel" hidden>
+    <h2>Event log</h2><div class="events" id="events"></div>
+  </div>
+  <details><summary>How to read this</summary>
+    <p>Each coloured card is one policy running on its own set of real TCP connections with the same seed (same message arrivals, same NAT). Heartbeats/client-hour is the overhead; drops are connections the NAT killed before the server noticed. The adaptive policy has to find the timeout by trying longer intervals, so it may cause a few drops while learning.</p>
+  </details>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+let OPTS = null, STATE = null, lastVersion = -1, focus = null;
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const pad2 = n => String(n).padStart(2, '0');
+const fmtT = s => Math.floor(s / 3600) + ':' + pad2(Math.floor(s % 3600 / 60));
+const fmtHMS = s => Math.floor(s / 3600) + ':' + pad2(Math.floor(s % 3600 / 60)) + ':' + pad2(Math.floor(s % 60));
+const fmtNum = v => v >= 1000 ? (v / 1000).toFixed(v % 1000 ? 1 : 0) + 'k' : String(Math.round(v * 10) / 10);
+const fx = (v, d = 1) => (v === null || v === undefined || isNaN(v)) ? '-' : v.toFixed(d);
+
+async function init() {
+  OPTS = await (await fetch('/api/options')).json();
+  const defaults = ['default-keepalive', 'fixed-60', 'adaptive-ucb'];
+  $('#pols').innerHTML = OPTS.policies.map(p =>
+    `<label><input type="checkbox" value="${p.id}" ${defaults.includes(p.id) ? 'checked' : ''}><span class="sw" style="--c:${p.color}"></span>${p.label}</label>`).join('');
+  $('#scenario').addEventListener('change', onScenario); onScenario();
+  $('#startBtn').addEventListener('click', start);
+  $('#stopBtn').addEventListener('click', () => fetch('/api/stop', { method: 'POST' }));
+  window.addEventListener('resize', () => STATE && render(STATE));
+  poll(); setInterval(poll, 300);
+}
+function onScenario() {
+  const s = $('#scenario').value;
+  document.querySelectorAll('.static-only').forEach(e => e.style.display = s === 'static' ? '' : 'none');
+  if (s === 'dynamic') $('#duration').value = '10800';
+}
+async function start() {
+  const policies = [...document.querySelectorAll('#pols input:checked')].map(e => e.value);
+  if (!policies.length) { $('#err').textContent = 'Pick at least one policy.'; return; }
+  $('#err').textContent = '';
+  const cfg = { policies, scenario: $('#scenario').value, timeout: +$('#timeout').value, loss: +$('#loss').value,
+    duration: +$('#duration').value, speed: +$('#speed').value, n: +$('#n').value, seed: +$('#seed').value };
+  lastVersion = -1; focus = null;
+  await fetch('/api/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cfg) });
+}
+async function poll() {
+  try {
+    const s = await (await fetch('/api/state')).json();
+    if (s.version !== lastVersion) { lastVersion = s.version; STATE = s; render(s); }
+  } catch (e) { /* server restarting */ }
+}
+
+function render(s) {
+  const running = s.status === 'running' || s.status === 'starting';
+  $('#stopBtn').disabled = !running;
+  const pill = $('#pill'); pill.textContent = s.status; pill.className = 'pill ' + (running ? 'running' : s.status === 'error' ? 'error' : '');
+  $('#err').textContent = s.error || '';
+  const has = s.lanes && s.lanes.length;
+  $('#empty').hidden = !!has || running;
+  ['charts', 'adaptPanel', 'tilePanel', 'evPanel'].forEach(id => $('#' + id).hidden = !has);
+  if (s.duration) {
+    $('#clock').textContent = fmtHMS(s.t || 0) + ' / ' + fmtHMS(s.duration);
+    $('#prog').style.width = Math.min(100, 100 * (s.t || 0) / s.duration) + '%';
+  }
+  if (!has) { $('#lanes').innerHTML = ''; return; }
+  if (!focus || !s.lanes.find(l => l.pol === focus)) focus = (s.lanes.find(l => l.pol === 'adaptive-ucb') || s.lanes[0]).pol;
+  const fl = s.lanes.find(l => l.pol === focus);
+
+  $('#lanes').innerHTML = s.lanes.map(l => `
+    <button class="lane ${l.pol === focus ? 'focus' : ''}" data-pol="${l.pol}" style="--c:${l.color}">
+      <div class="lname"><span>${l.label}</span>${l.pol === focus ? '<span class="tag">inspecting</span>' : ''}</div>
+      <div class="big">${fx(l.hb_h, 1)}<small>heartbeats / client-hour</small></div>
+      <div class="kv"><span>Connection drops</span><b>${l.drops} (${fx(l.drops_h, 2)}/h)</b></div>
+      <div class="kv"><span>Messages delivered</span><b>${l.delivered} / ${l.created}</b></div>
+      <div class="kv"><span>Mean delivery delay</span><b>${fx(l.lat_mean, 1)} s</b></div>
+      <div class="kv"><span>Wakeups / client-hour</span><b>${fx(l.wake_h, 1)}</b></div>
+    </button>`).join('');
+  document.querySelectorAll('.lane').forEach(b => b.addEventListener('click', () => { focus = b.dataset.pol; render(STATE); }));
+
+  const xMax = s.duration;
+  const hbMax = Math.max(5, ...s.lanes.map(l => l.hb));
+  const drMax = Math.max(3, ...s.lanes.map(l => l.drops));
+  lineChart($('#c1'), { xMax, yMax: niceMax(hbMax * 1.05), series: s.lanes.map(l => ({ name: l.short, color: l.color, pts: l.hist.t.map((t, i) => [t, l.hist.hb[i]]) })) });
+  lineChart($('#c2'), { xMax, yMax: niceMax(drMax * 1.1), series: s.lanes.map(l => ({ name: l.short, color: l.color, step: true, pts: l.hist.t.map((t, i) => [t, l.hist.drops[i]]) })) });
+
+  const iv = fl.iv.slice(); if (iv.length) iv.push([s.t, iv[iv.length - 1][1]]);
+  const off = iv.some(p => p[1] > 1000);
+  $('#adaptTitle').textContent = `Client 0 under "${fl.label}": heartbeat interval vs hidden NAT timeout` + (off ? ' (interval above 1000 s is off the chart)' : '');
+  lineChart($('#c3'), { xMax, ylog: true, yMin: 5, yMax: 1000, yTitle: 'seconds', series: [
+    { name: 'NAT timeout', color: css('--muted'), width: 4, pts: fl.tout0 },
+    { name: 'Interval', color: fl.color, step: true, width: 2.5, pts: iv }],
+    markers: fl.drops0.map(t => ({ x: t, y: 6.5, color: css('--bad') })) });
+
+  $('#tileTitle').textContent = `Clients under "${fl.label}"`;
+  $('#tiles').innerHTML = fl.clients.map(tileHTML).join('');
+  const names = Object.fromEntries(s.lanes.map(l => [l.pol, l]));
+  $('#events').innerHTML = s.events.length ? s.events.slice().reverse().slice(0, 40).map(e => {
+    const l = names[e.pol];
+    return `<div class="ev"><time>${fmtHMS(e.t)}</time><span class="sw" style="--c:${l ? l.color : '#999'}"></span><span><b>${l ? l.short : e.pol}</b>: client ${e.cid} declared lost (no ACK after 3 tries), reconnecting</span></div>`;
+  }).join('') : '<div class="ev">No drops yet.</div>';
+}
+
+function tileHTML(t) {
+  const lab = { alive: '&#10004; Connected', expired: '&#9888; NAT forgot it', reconnecting: '&#8635; Reconnecting', connecting: '&hellip; Connecting' }[t.status];
+  let bar = '', meta = '';
+  if (t.timeout) {
+    const r = t.age / t.timeout;
+    const cls = r >= 1 ? 'r' : r >= 0.6 ? 'w' : '';
+    bar = `<div class="bar"><i class="${cls}" style="width:${Math.min(100, r / 1.2 * 100)}%"></i><u></u></div>`;
+    meta = `idle ${Math.round(t.age)} s of ~${Math.round(t.timeout)} s limit<br>heartbeat every ${t.interval ? Math.round(t.interval) : '-'} s` + (t.next !== null && t.next !== undefined ? ` &middot; next in ${Math.round(t.next)} s` : '');
+    if (t.status === 'expired') meta += '<br><b>Server has not noticed yet</b>';
+  }
+  return `<div class="tile ${t.status}"><div class="th"><b>Client ${t.id}</b><span class="badge">${lab}</span></div>${bar}<div class="tmeta">${meta}</div></div>`;
+}
+
+function niceMax(v) { if (v <= 5) return 5; const p = Math.pow(10, Math.floor(Math.log10(v))), f = v / p; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p; }
+
+function lineChart(cv, o) {
+  const dpr = window.devicePixelRatio || 1, r = cv.getBoundingClientRect();
+  cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr);
+  const c = cv.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const w = r.width, h = r.height, L = 46, R = 92, T = 10, B = 24, iw = w - L - R, ih = h - T - B;
+  const ink2 = css('--ink2'), line = css('--line');
+  c.clearRect(0, 0, w, h); c.font = '11px system-ui, sans-serif'; c.textBaseline = 'middle';
+  const lo = o.ylog ? Math.log(o.yMin) : 0, hi = o.ylog ? Math.log(o.yMax) : o.yMax;
+  const X = x => L + Math.min(x, o.xMax) / o.xMax * iw;
+  const Y = y => { y = Math.min(y, o.yMax); const v = o.ylog ? Math.log(Math.max(y, o.yMin)) : y; return T + ih - (v - lo) / (hi - lo) * ih; };
+  const yt = o.ylog ? [10, 30, 60, 120, 300, 1000].filter(v => v >= o.yMin && v <= o.yMax) : [0, 1, 2, 3, 4].map(i => o.yMax * i / 4);
+  c.strokeStyle = line; c.fillStyle = ink2; c.lineWidth = 1; c.textAlign = 'right';
+  yt.forEach(v => { const y = Y(v); c.beginPath(); c.moveTo(L, y); c.lineTo(L + iw, y); c.stroke(); c.fillText(fmtNum(v), L - 6, y); });
+  c.textAlign = 'center'; for (let i = 0; i <= 4; i++) { const x = o.xMax * i / 4; c.fillText(fmtT(x) + ' h', X(x), T + ih + 14); }
+  const ends = [];
+  o.series.forEach(s => {
+    if (!s.pts.length) return;
+    c.strokeStyle = s.color; c.lineWidth = s.width || 2; c.lineJoin = 'round'; c.beginPath();
+    let py = 0;
+    s.pts.forEach((p, i) => { const x = X(p[0]), y = Y(p[1]); if (i === 0) c.moveTo(x, y); else { if (s.step) c.lineTo(x, py); c.lineTo(x, y); } py = y; });
+    c.stroke();
+    const last = s.pts[s.pts.length - 1];
+    ends.push({ y: Y(last[1]), x: X(last[0]), name: s.name, color: s.color });
+  });
+  (o.markers || []).forEach(m => { const x = X(m.x), y = Y(m.y); c.fillStyle = m.color; c.beginPath(); c.moveTo(x, y - 6); c.lineTo(x - 5, y + 4); c.lineTo(x + 5, y + 4); c.closePath(); c.fill(); });
+  ends.sort((a, b) => a.y - b.y);
+  for (let i = 1; i < ends.length; i++) if (ends[i].y - ends[i - 1].y < 13) ends[i].ly = (ends[i - 1].ly ?? ends[i - 1].y) + 13;
+  c.textAlign = 'left';
+  ends.forEach(e => {
+    const ly = e.ly ?? e.y;
+    c.fillStyle = e.color; c.beginPath(); c.arc(e.x, e.y, 3.5, 0, 7); c.fill();
+    c.fillStyle = ink2; c.fillText(e.name, L + iw + 8, ly);
+  });
+}
+init();
+</script>
+</body>
+</html>
